@@ -1,41 +1,51 @@
 use scrypto::prelude::*;
 
-external_blueprint! {
-    PoolPackageTarget {
-        fn new(resource0_addr: ResourceAddress, resource1_addr: ResourceAddress, fee: Decimal,
-            sqrt_price: Decimal, owner_badge_addr: ResourceAddress) -> ComponentAddress;
-    }
-}
-
 #[blueprint]
 mod dex_blueprint {
+
+    extern_blueprint! {
+        "package_rdx1pkgxxxxxxxxxfaucetxxxxxxxxx000034355863xxxxxxxxxfaucet",
+        Pool {
+            fn new(resource0_addr: ResourceAddress, resource1_addr: ResourceAddress, fee: Decimal,
+                sqrt_price: Decimal, owner_badge_addr: ResourceAddress, low_sqrt_price: Decimal, high_sqrt_price: Decimal,
+                bucket0: Bucket, bucket1: Bucket) -> (Global<Pool>, Bucket, Bucket, Bucket);
+        }
+    }
+
+    enable_method_auth! {
+        roles {
+            admin => updatable_by: [];
+        },
+        methods {
+            new_pool => restrict_to: [admin];
+        }
+    }
+
     struct Dex {
         dex_admin_badge_addr: ResourceAddress,
         pool_package_address: PackageAddress,
-        pools: HashMap<ComponentAddress, (ResourceAddress, ResourceAddress)>,
+        pools: HashSet<ComponentAddress>,
     }
 
     impl Dex {
-        pub fn new(pool_package_address: PackageAddress) -> (ComponentAddress, Bucket) {
-            let dex_admin_badge: Bucket = ResourceBuilder::new_fungible()
-                .metadata("name", "DEX admin badge")
+        pub fn new(pool_package_address: PackageAddress) -> (Global<Dex>, Bucket) {
+            let dex_admin_badge: Bucket = ResourceBuilder::new_fungible(OwnerRole::None)
                 .divisibility(DIVISIBILITY_NONE)
-                .mint_initial_supply(1);
-            let auth_rules: AccessRulesConfig = AccessRulesConfig::new()
-                .method(
-                    "new_pool",
-                    rule!(require(dex_admin_badge.resource_address())),
-                    AccessRule::DenyAll,
-                )
-                .default(AccessRule::AllowAll, AccessRule::DenyAll);
+                .mint_initial_supply(1)
+                .into();
 
             let dex = Self {
                 dex_admin_badge_addr: dex_admin_badge.resource_address(),
                 pool_package_address,
-                pools: HashMap::new(),
+                pools: HashSet::new(),
             }
-            .instantiate();
-            (dex.globalize_with_access_rules(auth_rules), dex_admin_badge)
+            .instantiate()
+            .prepare_to_globalize(OwnerRole::None)
+            .roles(roles!(
+                admin => rule!(require(dex_admin_badge.resource_address()));
+            ))
+            .globalize();
+            (dex, dex_admin_badge)
         }
 
         pub fn new_pool(
@@ -44,26 +54,24 @@ mod dex_blueprint {
             resource1_addr: ResourceAddress,
             fee: Decimal,
             sqrt_price: Decimal,
-            admin_auth: Proof,
-        ) -> ComponentAddress {
-            self.validate_admin_auth(admin_auth);
-            let pool_addr = PoolPackageTarget::at(self.pool_package_address, "Pool").new(
+            low_sqrt_price: Decimal,
+            high_sqrt_price: Decimal,
+            bucket0: Bucket,
+            bucket1: Bucket,
+        ) -> (ComponentAddress, Bucket, Bucket, Bucket) {
+            let (pool, pos_nft, rmd_bucket0, rmd_bucket1) = Blueprint::<Pool>::new(
                 resource0_addr,
                 resource1_addr,
                 fee,
                 sqrt_price,
                 self.dex_admin_badge_addr,
+                low_sqrt_price,
+                high_sqrt_price,
+                bucket0,
+                bucket1,
             );
-            self.pools.insert(pool_addr, (resource0_addr, resource1_addr));
-            pool_addr
-        }
-
-        fn validate_admin_auth(&self, auth: Proof) -> ValidatedProof {
-            auth.validate_proof(ProofValidationMode::ValidateContainsAmount(
-                self.dex_admin_badge_addr,
-                Decimal::one(),
-            ))
-            .expect("The provided admin badge is either of an invalid resource address or amount.")
+            self.pools.insert(pool.address());
+            (pool.address(), pos_nft, rmd_bucket0, rmd_bucket1)
         }
     }
 }
