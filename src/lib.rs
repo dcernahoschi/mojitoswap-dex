@@ -4,7 +4,7 @@ use scrypto::prelude::*;
 mod dex_blueprint {
 
     extern_blueprint! {
-        "package_rdx1pkgxxxxxxxxxfaucetxxxxxxxxx000034355863xxxxxxxxxfaucet",
+        "package_tdx_2_1pkmkzk8w82r064prwecrqrjrfrp88jhdwqkyv49juek4ynhn7476xx",
         Pool {
             fn new(resource0_addr: ResourceAddress, resource1_addr: ResourceAddress, fee: Decimal,
                 sqrt_price: Decimal, owner_badge_addr: ResourceAddress, low_sqrt_price: Decimal, high_sqrt_price: Decimal,
@@ -23,12 +23,11 @@ mod dex_blueprint {
 
     struct Dex {
         dex_admin_badge_addr: ResourceAddress,
-        pool_package_address: PackageAddress,
         pools: HashSet<ComponentAddress>,
     }
 
     impl Dex {
-        pub fn new(pool_package_address: PackageAddress) -> (Global<Dex>, Bucket) {
+        pub fn new() -> (Global<Dex>, Bucket) {
             let dex_admin_badge: Bucket = ResourceBuilder::new_fungible(OwnerRole::None)
                 .divisibility(DIVISIBILITY_NONE)
                 .mint_initial_supply(1)
@@ -36,7 +35,6 @@ mod dex_blueprint {
 
             let dex = Self {
                 dex_admin_badge_addr: dex_admin_badge.resource_address(),
-                pool_package_address,
                 pools: HashSet::new(),
             }
             .instantiate()
